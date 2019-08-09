@@ -11,4 +11,4 @@ For memory retrieval, instead of spin-waiting and blocking the thread, the syste
 
 The rule for consistency is simple: if you choose to treat the type as a buffer, you should NOT use Write/Read Visitors. 
 
-When you use a Writevisitor, you should specify the amount of bytes you plan on writing when calling visit(). If you don't plan on making the type grow, you can simply enter None.
+When you use a WriteVisitor, you should specify the amount of bytes you plan on writing when calling visit(). If you don't plan on making the type grow, you can simply enter None.
