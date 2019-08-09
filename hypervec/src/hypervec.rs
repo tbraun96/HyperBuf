@@ -125,11 +125,10 @@ pub trait Castable {
 
 impl Castable for HyperVec {
     fn cast<Type>(&self) -> InformationResult<ReadVisitor<Type>> {
-        match std::mem::align_of::<Type>() == self.layout.size() {
-            true => {
-                Ok(ReadVisitor::new((&*self as *const Self) as *mut Self, self.get_read_version()))
-            }
-            _ => { MemError::throw_corrupt(&"Invalid alignment") }
+        if std::mem::align_of::<Type>() == self.layout.size() {
+            Ok(ReadVisitor::new((&*self as *const Self) as *mut Self, self.get_read_version()))
+        } else {
+            MemError::throw_corrupt(&"Invalid alignment")
         }
     }
 
@@ -139,11 +138,10 @@ impl Castable for HyperVec {
     }
 
     fn cast_mut<Type>(&mut self) -> InformationResult<WriteVisitor<Type>> {
-        match std::mem::align_of::<Type>() == self.layout.size() {
-            true => {
-                Ok(WriteVisitor::new(&mut *self as *mut Self, self.get_write_version()))
-            }
-            _ => { MemError::throw_corrupt(&"Invalid alignment") }
+        if std::mem::align_of::<Type>() == self.layout.size() {
+            Ok(WriteVisitor::new(&mut *self as *mut Self, self.get_write_version()))
+        } else {
+            MemError::throw_corrupt(&"Invalid alignment")
         }
     }
 
@@ -384,11 +382,10 @@ impl<'visit, T> WriteVisitor<'visit, T> {
     /// Returns a mutable reference to the underlying object if available
     #[inline]
     pub fn get(&self) -> Option<&mut T> {
-        match self.is_ready() {
-            true => unsafe {
-                Some((*self.ptr).cast_unchecked_mut())
-            },
-            _ => None
+        if self.is_ready() {
+            unsafe { Some((*self.ptr).cast_unchecked_mut()) }
+        } else {
+            None
         }
     }
 
@@ -403,13 +400,10 @@ impl<'visit, T> Future for &WriteVisitor<'visit, T> {
 
     #[inline]
     fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<Self::Output> {
-        match self.is_ready() {
-            true => {
-                Poll::Ready(Ok(()))
-            },
-            _ => {
-                Poll::Pending
-            }
+        if self.is_ready() {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
         }
     }
 }
@@ -477,13 +471,10 @@ impl<'visit, T> ReadVisitor<'visit, T> {
     /// Returns a mutable reference to the underlying object if available
     #[inline]
     pub fn get(&self) -> Option<&T> {
-        match self.is_ready() {
-            true => unsafe {
-                let r = (*self.ptr).cast_unchecked();
-                Some(r)
-            },
-
-            _ => None
+        if self.is_ready() {
+            unsafe { Some((*self.ptr).cast_unchecked()) }
+        } else {
+            None
         }
     }
 
@@ -494,13 +485,10 @@ impl<'visit, T> Future for &ReadVisitor<'visit, T> {
 
     #[inline]
     fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<Self::Output> {
-        match self.is_ready() {
-            true => {
-                Poll::Ready(Ok(()))
-            },
-            _ => {
-                Poll::Pending
-            }
+        if self.is_ready() {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
         }
     }
 }

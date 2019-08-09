@@ -22,7 +22,7 @@ fn vec(len: usize, slice: &[u8]) {
 }
 
 fn hyper_vec(len: usize, slice: &[u8]) {
-    let mut mem0 = HyperVec::new(len).unwrap();
+    let mut mem0 = HyperVec::new(len);
     let mem = &mut mem0;
 
     for idx in 0..(len/slice.len()) {
@@ -65,22 +65,15 @@ fn criterion_benchmark(c: &mut Criterion) {
 
 fn hyperlock() {
     let my_x: u16 = 100;
-    let mut wrapper = HyperVec::wrap(my_x).unwrap();
-    let wrapper = wrapper.get_static();
-
+    let mut wrapper = HyperVec::wrap(my_x);
+    let mut wrapper = &mut wrapper;
     for x in 0..u16::max_value() {
         let writer = wrapper.cast_mut::<u16>().unwrap();
-        let reader = wrapper.cast::<u16>().unwrap();
         block_on(writer.visit( None, |r| {
             let write = r.unwrap();
             *write.get().unwrap() = x;
             None
         })).and_then(|_| {
-            reader.visit( |r| {
-                let read = r.unwrap();
-                let m = *read.get().unwrap();
-                assert_eq!(m, x);
-            });
             Ok(())
         });
     }
