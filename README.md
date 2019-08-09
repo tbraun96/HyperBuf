@@ -1,5 +1,5 @@
 # HyperBuf
-A dynamic and highly optimized buffer with atomic locking mechanisms and asynchronous memory managemet
+A dynamic and highly optimized buffer with atomic locking mechanisms and asynchronous memory management
 
 For memory retrieval, instead of spin and blocking th thread, the system uses an asynchronous model for treating the data internally as any type. There are three ways to interact with the data, and it is up to the programmer to make the wisest decisions:
 
