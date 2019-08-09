@@ -15,7 +15,7 @@ use std::marker::PhantomData;
 /// This is a type which can be re-interpreted to any type, regardless of alignment
 #[fundamental]
 #[repr(C)]
-pub struct HyperVec where Self: 'static {
+pub struct HyperVec {
     ptr: *mut u8,
     len: usize,
     cursor: isize,
@@ -27,8 +27,6 @@ pub struct HyperVec where Self: 'static {
     /// We place the layout at the end of the struct to ensure that, in the event of corruption, the bytes do not interfere with this struct.
     layout: Layout
 }
-
-
 
 /// The primary HyperVec is allowed to ship around between threads
 unsafe impl Send for HyperVec {}
@@ -120,16 +118,16 @@ pub trait Castable {
     /// Casts the underlying bytes to an immutable version of the the supplied type without checking alignment
     unsafe fn cast_unchecked<Type>(&self)  -> &Type;
     /// Casts the underlying bytes to a mutable version of the supplied type with checking alignment accompanied by a WriteVisitor
-    fn cast_mut<Type>(&self)  -> InformationResult<WriteVisitor<Type>>;
+    fn cast_mut<Type>(&mut self)  -> InformationResult<WriteVisitor<Type>>;
     /// Casts the underlying bytes to a mutable version of the the supplied type without checking alignment
-    unsafe fn cast_unchecked_mut<Type>(&self) -> &mut Type;
+    unsafe fn cast_unchecked_mut<Type>(&mut self) -> &mut Type;
 }
 
 impl Castable for HyperVec {
     fn cast<Type>(&self) -> InformationResult<ReadVisitor<Type>> {
         match std::mem::align_of::<Type>() == self.layout.size() {
             true => {
-                Ok(unsafe { ReadVisitor::new(self.rip_mut(), self.get_read_version()) })
+                Ok(ReadVisitor::new((&*self as *const Self) as *mut Self, self.get_read_version()))
             }
             _ => { MemError::throw_corrupt(&"Invalid alignment") }
         }
@@ -140,16 +138,16 @@ impl Castable for HyperVec {
         &*(self.ptr as *mut Type)
     }
 
-    fn cast_mut<Type>(&self) -> InformationResult<WriteVisitor<Type>> {
+    fn cast_mut<Type>(&mut self) -> InformationResult<WriteVisitor<Type>> {
         match std::mem::align_of::<Type>() == self.layout.size() {
             true => {
-                Ok(unsafe { WriteVisitor::new(self.rip_mut(), self.get_write_version()) })
+                Ok(WriteVisitor::new(&mut *self as *mut Self, self.get_write_version()))
             }
             _ => { MemError::throw_corrupt(&"Invalid alignment") }
         }
     }
 
-    unsafe fn cast_unchecked_mut<Type>(&self) -> &mut Type {
+    unsafe fn cast_unchecked_mut<Type>(&mut self) -> &mut Type {
         &mut *(self.ptr as *mut Type)
     }
 
@@ -159,30 +157,30 @@ impl Castable for HyperVec {
 impl HyperVec {
     #[inline]
     /// Returns a HyperVec module that is blocked
-    pub fn new<'a>(len: usize) -> InformationResult<'a, Self> {
+    pub fn new(len: usize) -> Self {
         let layout = unsafe { Layout::from_size_align_unchecked(len, 1) };
         let ptr = unsafe { std::alloc::alloc(layout) };
-        Ok(Self { ptr, len, layout, cursor: 0, read_version: AtomicUsize::new(0), write_version: AtomicUsize::new(0), corrupt: false })
+        Self { ptr, len, layout, cursor: 0, read_version: AtomicUsize::new(0), write_version: AtomicUsize::new(0), corrupt: false }
     }
 
     #[inline]
     /// Returns a HyperVec module that is blocked
-    pub fn new_zeroed<'a>(len: usize) -> InformationResult<'a, Self> {
+    pub fn new_zeroed(len: usize) -> Self {
         let layout = Layout::array::<u8>(len).unwrap();
         let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
-        Ok(Self { ptr, len, layout, cursor: 0, read_version: AtomicUsize::new(0), write_version: AtomicUsize::new(0), corrupt: false })
+        Self { ptr, len, layout, cursor: 0, read_version: AtomicUsize::new(0), write_version: AtomicUsize::new(0), corrupt: false }
     }
 
     #[inline]
     /// Wraps around a pre-existing value, translating it into its bytes
-    pub fn wrap<'a, T: Sized>(t: T) -> InformationResult<'a, Self> {
+    pub fn wrap<T: Sized>(t: T) -> Self {
         let ptr0 = (&t as *const T) as *const u8;
         let layout = Layout::for_value(&t);
         let ptr = unsafe{ std::alloc::alloc(layout) };
 
         unsafe { std::ptr::copy_nonoverlapping(ptr0, ptr, layout.size()) };
 
-        Ok(Self {
+        Self {
             ptr,
             len: layout.size(),
             cursor: 0,
@@ -190,12 +188,7 @@ impl HyperVec {
             write_version: AtomicUsize::new(0),
             corrupt: false,
             layout
-        })
-    }
-
-    /// Returns a static
-    pub fn get_static(&mut self) -> &'static mut Self {
-        unsafe { std::mem::transmute::<&mut Self, &'static mut Self>(self) }
+        }
     }
 
     /// Return an immutable slice of the underlying bytes
@@ -204,12 +197,12 @@ impl HyperVec {
     }
 
     /// Return an mutable slice of the underlying bytes
-    pub unsafe fn get_full_bytes_mut(&self) -> &mut [u8] {
+    pub unsafe fn get_full_bytes_mut(&mut self) -> &mut [u8] {
         &mut *std::ptr::slice_from_raw_parts_mut(self.ptr, self.len)
     }
 
     /// Returns the bytes between the cursor position and the remaining mutable bytes on the heap
-    pub unsafe fn get_bytes_mut_cursor(&self) -> &mut [u8] {
+    pub unsafe fn get_bytes_mut_cursor(&mut self) -> &mut [u8] {
         &mut *std::ptr::slice_from_raw_parts_mut(self.ptr.offset(self.cursor), self.remaining_mut())
     }
 
@@ -274,19 +267,20 @@ impl HyperVec {
     /// Pretty damn unsafe
     #[inline]
     pub unsafe fn get_and_increment_read_version(&self) -> usize {
-        (*self.rip_mut()).read_version.fetch_add(1, Ordering::SeqCst)
+        (*self).read_version.fetch_add(1, Ordering::SeqCst)
     }
 
     /// Pretty damn unsafe
     #[inline]
     pub unsafe fn get_and_increment_write_version(&self) -> usize {
-        (*self.rip_mut()).write_version.fetch_add(1, Ordering::SeqCst)
+        (*self).write_version.fetch_add(1, Ordering::SeqCst)
     }
 
+    /*
     /// converts immutable self to mutable self
     unsafe fn rip_mut(&self) -> *mut Self {
         (&*self as *const Self) as *mut Self
-    }
+    }*/
 
     /// As writing occurs to the underlying object, it becomes entirely possible for the user to improperly use
     /// the WriteVisitor, thus signalling data corruption
@@ -303,21 +297,6 @@ impl HyperVec {
             self.len = self.len + layout.size();
             self.ptr = unsafe { std::alloc::realloc(self.ptr, layout, self.len) };
         }
-    }
-
-    /// This reads all the bytes of self
-    pub unsafe fn debug(&self) -> bool {
-        println!("Length of pointee: {}", self.len);
-        let ptr = self.ptr;
-        let bytes0: Vec<u8> = (0..self.len).map(|idx| {
-            *ptr.offset(idx as isize)
-        }).collect();
-
-        let bytes1 = self.bytes().to_vec();
-
-        !bytes0.into_iter().zip(bytes1).into_iter().map(|(byte0, byte1)| {
-            byte0 == byte1
-        }).any(|cond| cond == false)
     }
 }
 

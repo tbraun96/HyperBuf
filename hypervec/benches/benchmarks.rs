@@ -45,21 +45,21 @@ fn criterion_benchmark(c: &mut Criterion) {
     let slice = slice.as_ref();
     let slice = unsafe { std::mem::transmute::<&[u8], &'static [u8]>(slice) };
 
-    /*
+
     c.bench(
         "Vec benches",
         ParameterizedBenchmark::new("std vec", move |b, i| b.iter(|| vec(*i as usize, slice)), vec![120])
             .with_function("HyperVec", move |b, i| b.iter(|| hyper_vec(*i as usize, slice)))
             .with_function("BytesMut", move |b, i| b.iter(|| bytes_mut(*i as usize, slice))),
     );
-    */
 
-    c.bench(
+
+    /*c.bench(
         "Lock speeds",
         ParameterizedBenchmark::new("ParkingLot::Mutex", move |b, i| b.iter(|| parkinglot_mutex()), vec![0])
             .with_function("HyperLock", move |b, i| b.iter(|| hyperlock())),
     );
-
+*/
 }
 
 
