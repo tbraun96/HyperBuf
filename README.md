@@ -13,7 +13,7 @@ There are three ways to interact with the data, and it is up to the programmer t
 
 3. Asynchronous casting of type to a mutable thus writable version (via WriteVisitor's)
 
-The rule for consistency is simple: if you choose to treat the type as a buffer, you should NOT use Write/Read Visitors. 
+The rule for consistency is simple: if you choose to treat the type as a buffer, you should NOT use Write/Read Visitors. However, keep in mind that, for performance reasons, this check is NOT made programatically! It is up to YOU to design your program correctly around this model
 
 When you use a WriteVisitor, you should specify the amount of bytes you plan on writing when calling visit(). If you don't plan on making the type grow, you can simply enter None.
 
