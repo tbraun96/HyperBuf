@@ -3,7 +3,7 @@ A dynamic and highly optimized buffer with atomic locking mechanisms and asynchr
 
 HyperBuf is about 1.4x faster than BytesMut, and 3.4x faster than std::vec!
 
-For memory retrieval, instead of spin-waiting and blocking the thread, the system uses an atomically-backed and asynchronous model that has the capacity to treat the data internally as any arbitrary type. This is especially useful for writing a stream of network bytes to a custom Packet type. This is Zerocopy on steroids.
+For memory retrieval, instead of spin-waiting and blocking the thread, the system uses an atomically-backed and asynchronous model that has the capacity to treat the data internally as any arbitrary type. This is especially useful for writing a stream of network bytes to a custom Packet type.
 
 There are three ways to interact with the data, and it is up to the programmer to make the wisest decisions:
 
