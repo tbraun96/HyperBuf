@@ -10,8 +10,11 @@ use crate::hypervec::{HyperVec, ReadVisitor, WriteVisitor, Endianness};
 use std::sync::atomic::AtomicUsize;
 use std::alloc::{Alloc, Layout};
 
+use serde::{Serialize, Deserialize};
+
 /// For serialization purposes
 #[repr(C)]
+#[derive(Serialize, Deserialize)]
 pub struct HyperVecSerde(pub Vec<u8>, pub isize, pub usize, pub usize, pub bool);
 
 

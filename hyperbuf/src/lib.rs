@@ -1,4 +1,4 @@
-#![feature(fundamental, alloc_layout_extra, slice_from_raw_parts, allocator_api, custom_attribute, optin_builtin_traits, async_await, arbitrary_self_types, alloc_error_hook, trivial_bounds, in_band_lifetimes)]
+#![feature(fundamental, alloc_layout_extra, slice_from_raw_parts, allocator_api, custom_attribute, optin_builtin_traits, async_await, arbitrary_self_types, alloc_error_hook, trivial_bounds, in_band_lifetimes, slice_index_methods)]
 #![feature(label_break_value)]
 //! HyperVec is a highly-experimental primitive
 

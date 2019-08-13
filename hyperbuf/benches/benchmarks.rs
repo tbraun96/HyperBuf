@@ -13,29 +13,35 @@ use hyperbuf::hypervec::{HyperVec, WriteVisitor};
 use futures::executor::block_on;
 
 fn vec(len: usize, slice: &[u8]) {
-    let mut mem0 = Vec::new();
+    let mut mem0 = Vec::with_capacity(len/slice.len());
     let mem = &mut mem0;
-
-    for idx in 0..(len/slice.len()) {
-        mem.put_u8(idx as u8);
+    unsafe {
+        mem.set_len(len/slice.len());
+        for idx in 0..(len/slice.len()) {
+            //mem[idx] = idx as u8;
+            mem[idx] = idx;
+        }
     }
+
+
 }
 
 fn hyper_vec(len: usize, slice: &[u8]) {
     let mut mem0 = HyperVec::new(len);
     let mem = &mut mem0;
 
-    for idx in 0..(len/slice.len()) {
-        mem.put_u8(idx as u8);
+    for idx in 0..(len/slice.len()) as isize {
+        //mem.put_u8(idx as u8);
+        mem[idx] = idx as u8;
     }
 }
 
 fn bytes_mut(len: usize, slice: &[u8]) {
     let mut mem0 = BytesMut::with_capacity(len);
     let mem = &mut mem0;
-
+    unsafe {mem.set_len(len/slice.len())}
     for idx in 0..(len/slice.len()) {
-        mem.put_u8(idx as u8);
+        mem[idx] = idx as u8;
     }
 }
 

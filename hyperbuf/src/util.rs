@@ -42,12 +42,14 @@ pub(super) mod ser {
     use std::io::{BufReader, Write};
     use crate::results::MemError;
     use crate::impls::HyperVecSerde;
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
 
     /// Serializes an entity to the disk
-    pub(crate) fn serialize_hypervec_to_disk<T: Sized>(full_path: &str, entity: &T) -> Result<usize, std::io::Error> {
+    pub(crate) fn serialize_hypervec_to_disk<T: Serialize>(full_path: &str, entity: &T) -> Result<usize, std::io::Error> {
         //bincode::serialize(entity).unwrap().as_slice()
         File::create(full_path)
-            .and_then(|mut file| file.write(ptr_serialize(entity).as_ref()))
+            .and_then(|mut file| file.write(bincode::serialize(entity).unwrap().as_slice()))
             .map_err(|err| err)
     }
 
@@ -59,16 +61,17 @@ pub(super) mod ser {
     ///             write_version (usize: 8 bytes),
     ///             is_be (bool: 1 byte)
     /// Tactic: start from the end, assume the bytes are properly placed in order
-    pub(crate) fn deserialize_hypervec_from_disk(full_path: &str) -> Result<HyperVecSerde, std::io::Error> {
+    pub(crate) fn deserialize_hypervec_from_disk<T: DeserializeOwned>(full_path: &str) -> Result<T, std::io::Error> {
         //bincode::config().deserialize_from(rx).map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, MemError::<String>::GENERIC(err.to_string()))
         File::open(full_path).and_then(|res| {
             let rx = BufReader::new(res);
-            ptr_deserialize_hypervecserde(rx.buffer())
+            bincode::config().deserialize_from(rx).map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, MemError::<String>::GENERIC(err.to_string())))
         })
     }
 
     static HYPERVEC_MIN_SIZE: usize = 25;
 
+    #[allow(unused)]
     pub fn ptr_deserialize_hypervecserde(bytes: &[u8]) -> Result<HyperVecSerde, std::io::Error> {
         let len = bytes.len();
         if len < HYPERVEC_MIN_SIZE {
@@ -83,11 +86,14 @@ pub(super) mod ser {
         }
     }
 
+    #[allow(unused)]
     pub fn ptr_serialize<T: Sized>(t: &T) -> Box<[u8]> {
         let size = std::mem::size_of_val(&t);
+        println!("Will serialize {} bytes", size);
         let mut bytes = Vec::<u8>::with_capacity(size);
         let ptr = t as *const T;
         let ptr = ptr as *const u8;
+
         for idx in 0..(size as isize) {
             unsafe { bytes.push(*ptr.offset(idx)) };
         }

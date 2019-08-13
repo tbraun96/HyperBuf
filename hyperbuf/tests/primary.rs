@@ -4,7 +4,7 @@
  */
 
 #[macro_use]
-extern crate hyxe_derive;
+extern crate hyperbuf_derive;
 
 use std::mem::size_of_val;
 use std::thread;
@@ -17,17 +17,18 @@ use futures::{Poll, TryFutureExt};
 use futures::executor::block_on;
 use parking_lot::Mutex;
 
-use hypervec::hypervec::{HyperVec, WriteVisitor};
+use hyperbuf::hypervec::{HyperVec, WriteVisitor};
 
-use hypervec::impls::Castable;
-use hypervec::prelude::ByteWrapper;
+use hyperbuf::impls::Castable;
+use hyperbuf::prelude::ByteWrapper;
 
 #[test]
 fn vectors(){
     let file_pos = "C:\\Users\\tbrau\\test.h";
     let items = &[10 as u8, 3, 99, 255, 251, 254];
     let mut wrapper = HyperVec::wrap_bytes(items);
-    println!("len: {}", wrapper.length());
+    println!("{}", wrapper);
+
     let wrapper_ref = &mut wrapper;
     for byte in wrapper_ref {
         println!("{}", unsafe {*byte});
@@ -35,9 +36,12 @@ fn vectors(){
 
     let _ = wrapper.serialize_to_disk(file_pos);
 
+
     let wrapper2 = block_on(HyperVec::deserialize_from_disk(file_pos)).unwrap();
-    println!("len: {}", wrapper2.length());
-    for byte in wrapper2 {
+    println!("len2: {}", wrapper2.length());
+    println!("{}", wrapper2);
+    for byte in wrapper2.into_iter() {
+        println!("here");
         println!("{}", unsafe {*byte});
     }
     //wrapper.serialize_to_disk().unwrap();

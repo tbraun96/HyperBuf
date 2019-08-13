@@ -12,6 +12,7 @@ use bytes::BufMut;
 use crate::results::{InformationResult, MemError};
 use crate::impls::*;
 use crate::partition_map::PartitionMap;
+use std::fmt::{Display, Formatter, Error};
 
 /// This is a type which can be re-interpreted to any type, regardless of alignment
 #[fundamental]
@@ -30,7 +31,6 @@ pub struct HyperVec {
     /// We place the layout at the end of the struct to ensure that, in the event of corruption, the bytes do not interfere with this struct.
     pub(crate) layout: Layout
 }
-
 
 impl HyperVec {
     #[inline]
@@ -506,5 +506,20 @@ impl Endianness {
         } else {
             Endianness::LE
         }
+    }
+}
+
+impl Display for HyperVec {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let endianness = {
+            if self.endianness.is_be(){
+                "Big Endian (Network Endian)"
+            } else {
+                "Little Endian"
+            }
+        };
+
+        write!(f, "[HyperVec] [length={}] [cursor={}] [read_version={}] [write_version={}] [Endianness={}]",
+        self.len, self.cursor, self.get_read_version(), self.get_write_version(), endianness)
     }
 }
