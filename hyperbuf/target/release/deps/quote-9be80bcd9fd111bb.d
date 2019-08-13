@@ -1,0 +1,13 @@
+/mnt/c/hyxewave-sys/HyperBuf/hyperbuf/target/release/deps/quote-9be80bcd9fd111bb.rmeta: /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/lib.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ext.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/format.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ident_fragment.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/to_tokens.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/runtime.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/spanned.rs
+
+/mnt/c/hyxewave-sys/HyperBuf/hyperbuf/target/release/deps/libquote-9be80bcd9fd111bb.rlib: /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/lib.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ext.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/format.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ident_fragment.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/to_tokens.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/runtime.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/spanned.rs
+
+/mnt/c/hyxewave-sys/HyperBuf/hyperbuf/target/release/deps/quote-9be80bcd9fd111bb.d: /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/lib.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ext.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/format.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ident_fragment.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/to_tokens.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/runtime.rs /home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/spanned.rs
+
+/home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/lib.rs:
+/home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ext.rs:
+/home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/format.rs:
+/home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/ident_fragment.rs:
+/home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/to_tokens.rs:
+/home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/runtime.rs:
+/home/nologik/.cargo/registry/src/github.com-1ecc6299db9ec823/quote-1.0.0/src/spanned.rs:
