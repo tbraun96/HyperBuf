@@ -23,12 +23,12 @@ When using indexes or the put_u8-like methods, HyperVec is faster than the std::
 ```
 
 [System Information]
-         Operating System: Windows 10 Enterprise Insider Preview 64-bit (10.0, Build 18917) (18917.rs_prerelease.190607-1942)
-                     BIOS: 1301 (type: UEFI)
-                Processor: Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz (8 CPUs), ~4.2GHz
-                   Memory: 16384MB RAM
-      Available OS Memory: 16326MB RAM
-                Page File: 15402MB used, 8859MB available
+    Operating System: Windows 10 Enterprise Insider Preview 64-bit (10.0, Build 18917) (18917.rs_prerelease.190607-1942)
+    BIOS: 1301 (type: UEFI)
+    Processor: Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz (8 CPUs), ~4.2GHz
+    Memory: 16384MB RAM
+    Available OS Memory: 16326MB RAM
+    Page File: 15402MB used, 8859MB available
 
 Vec benches/std vec     time:   [19.311 ns 19.317 ns 19.322 ns]
                         change: [-0.0808% -0.0337% +0.0096%] (p = 0.15 > 0.05)
