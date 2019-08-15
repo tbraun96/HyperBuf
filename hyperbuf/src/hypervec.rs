@@ -122,6 +122,11 @@ impl HyperVec {
         &mut *std::ptr::slice_from_raw_parts_mut(self.ptr.offset(self.cursor), self.remaining_mut())
     }
 
+    /// Returns the bytes between the cursor position and the remaining mutable bytes on the heap
+    pub unsafe fn get_bytes_cursor(&mut self) -> &[u8] {
+        &*std::ptr::slice_from_raw_parts(self.ptr.offset(self.cursor), self.remaining_mut())
+    }
+
     /// Reads the cursor position
     pub fn cursor_position(&self) -> isize {
         self.cursor
@@ -247,9 +252,9 @@ pub struct WriteVisitor<'visit, T: ?Sized> {
     _phantom: PhantomData<&'visit T>,
 }
 
-unsafe impl<'visit, T: ?Sized> Send for WriteVisitor<'visit, T> {}
+impl<'visit, T: ?Sized> !Send for WriteVisitor<'visit, T> {}
 
-unsafe impl<'visit, T: ?Sized> Sync for WriteVisitor<'visit, T> {}
+impl<'visit, T: ?Sized> !Sync for WriteVisitor<'visit, T> {}
 
 #[allow(unused_results)]
 impl<'visit, T: ?Sized> Drop for WriteVisitor<'visit, T> {
@@ -314,7 +319,7 @@ impl<'visit, T: ?Sized> WriteVisitor<'visit, T> {
                 Some(bytes_added) => {
                     if bytes_added > initial_size + pre_alloc_amt {
                         (*self.ptr).corrupt = true;
-                        let bytes = std::mem::transmute::<&'_ [u8], &'static [u8]>((*self.ptr).bytes());
+                        let bytes = (*self.ptr).bytes();
                         MemError::throw_corrupt(bytes)
                     } else {
                         Ok(())
@@ -337,7 +342,7 @@ impl<'visit, T: ?Sized> WriteVisitor<'visit, T> {
 
     /// Returns a mutable reference to the underlying object if available
     #[inline]
-    pub fn get(&self) -> Option<&mut T> {
+    pub fn write(&self) -> Option<&mut T> {
         if self.is_ready() {
             unsafe { Some((*self.ptr).cast_unchecked_mut()) }
         } else {
@@ -347,7 +352,7 @@ impl<'visit, T: ?Sized> WriteVisitor<'visit, T> {
 
     /// Returns a mutable reference to the underlying object if available
     #[inline]
-    pub fn get_array(&self) -> Option<&mut [T]> where for<'a> T: Sized{
+    pub fn write_array(&self) -> Option<&mut [T]> where for<'a> T: Sized + 'a {
         if self.is_ready() {
             unsafe { Some((*self.ptr).cast_unchecked_mut_array()) }
         } else {
@@ -378,9 +383,9 @@ pub struct ReadVisitor<'visit, T: ?Sized> {
     _phantom: PhantomData<&'visit T>,
 }
 
-unsafe impl<'visit, T: ?Sized> Send for ReadVisitor<'visit, T> {}
+impl<'visit, T: ?Sized> !Send for ReadVisitor<'visit, T> {}
 
-unsafe impl<'visit, T: ?Sized> Sync for ReadVisitor<'visit, T> {}
+impl<'visit, T: ?Sized> !Sync for ReadVisitor<'visit, T> {}
 
 #[allow(unused_results)]
 impl<'visit, T: ?Sized> Drop for ReadVisitor<'visit, T> {
@@ -482,9 +487,19 @@ impl<'visit, T: ?Sized> ReadVisitor<'visit, T> {
 
     /// Returns a mutable reference to the underlying object if available
     #[inline]
-    pub fn get(&self) -> Option<&T> {
+    pub fn read(&self) -> Option<&T> {
         if self.is_ready() {
             unsafe { Some((*self.ptr).cast_unchecked()) }
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable reference to the underlying object if available
+    #[inline]
+    pub fn read_array(&self) -> Option<&[T]> where for<'a> T: Sized + 'a {
+        if self.is_ready() {
+            unsafe { Some((*self.ptr).cast_unchecked_array()) }
         } else {
             None
         }
@@ -554,9 +569,9 @@ impl Display for HyperVec {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let endianness = {
             if self.endianness.is_be(){
-                "Big Endian (Network Endian)"
+                "big endian (network endian) <-- most significant byte last"
             } else {
-                "Little Endian"
+                "little endian <-- least significant byte last"
             }
         };
 

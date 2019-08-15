@@ -84,8 +84,9 @@ fn vectors(){
         println!("{}", unsafe {*byte});
     }*/
     let write = wrapper_ref.cast_mut::<Txx>().unwrap();
+    //let read = wrapper_ref.cast::<Txx>().unwrap();
     block_on(write.visit(None, |write| unsafe {
-        let m = write.get_array()?;
+        let m = write.write_array()?;
         let mut i = 0;
 
         let v1 = &m[0];
