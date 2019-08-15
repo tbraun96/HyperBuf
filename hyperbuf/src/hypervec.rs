@@ -18,7 +18,8 @@ use std::fmt::{Display, Formatter, Error};
 #[fundamental]
 #[repr(C)]
 pub struct HyperVec {
-    pub(crate) ptr: *mut u8,
+    /// #
+    pub ptr: *mut u8,
     pub(crate) len: usize,
     pub(crate) cursor: isize,
     /// The read and write versions are only for editing data through visitors
@@ -52,10 +53,13 @@ impl HyperVec {
     #[inline]
     /// Wraps around a pre-existing value, translating it into its bytes.
     /// Use wrap_bytes for arrays; this is more for structs
-    pub fn wrap<T: Sized>(t: T) -> Self {
-        let ptr0 = (&t as *const T) as *const u8;
-        let layout = Layout::for_value(&t);
+    pub fn wrap<T: ?Sized>(t: &T) -> Self {
+        let ptr0 = t as *const T as *const u8;
+        println!("[WRAP] {} {}", std::mem::size_of_val(t), std::mem::align_of_val(t));
+        let layout = Layout::for_value::<T>(t);
         let ptr = unsafe { std::alloc::alloc(layout) };
+
+        println!("LAYOUT size: {}", layout.size());
 
         unsafe { std::ptr::copy_nonoverlapping(ptr0, ptr, layout.size()) };
 
@@ -72,11 +76,17 @@ impl HyperVec {
         }
     }
 
+    /// Debug ONLY
+    #[allow(dead_code)]
+    pub fn as_static(&mut self) -> &'static mut Self {
+        unsafe { std::mem::transmute::<&mut Self, &'static mut Self>(self) }
+    }
+
     /// Saves the data the the disk, and returns the number of bytes written if successful
     /// NOT WORKING
     pub fn serialize_to_disk(self, path: &str) -> Result<usize, std::io::Error> {
         if self.is_corrupted() {
-            return Err(MemError::GENERIC("You cannot serialize a corrupted dataset; this is to ensure the data you want is going to be written, and not junk data").into());
+            return MemError::throw_std("You cannot serialize a corrupted dataset; this is to ensure the data you want is going to be written, and not junk data");
         }
 
         let res: HyperVecSerde = self.into();
@@ -182,10 +192,26 @@ impl HyperVec {
         (*self).write_version.fetch_add(1, Ordering::SeqCst)
     }
 
+    /// This should only be called when no Read/WriteVisitors are active, otherwise setting this to another value will cause errors
+    pub unsafe fn set_write_version(&mut self, update: usize) {
+        self.write_version.store(update, Ordering::SeqCst);
+    }
+
+    /// This should only be called when no Read/WriteVisitors are active, otherwise setting this to another value will cause errors
+    pub unsafe fn set_read_version(&mut self, update: usize) {
+        self.read_version.store(update, Ordering::SeqCst);
+    }
 
     /// Returns the buffer's endianness
     pub fn get_endianness(&self) -> &Endianness {
         &self.endianness
+    }
+
+    /// I am marking this function as unsafe, because if any downstream consumers depend upon the state of the bytes, then those consumers
+    /// will possibly require to update the way they consume their data (if switched). This is to give the API programmer an idea of of the
+    /// severity of this function
+    pub unsafe fn set_endianness(&mut self, endianness: Endianness) {
+        self.endianness = endianness;
     }
 
     /// As writing occurs to the underlying object, it becomes entirely possible for the user to improperly use
@@ -199,30 +225,34 @@ impl HyperVec {
     #[inline]
     pub fn extend(&mut self, additional_bytes: usize) {
         if let Ok((layout, pos_new)) = self.layout.extend(Layout::array::<u8>(additional_bytes).unwrap()) {
-            println!("new layout size, pos: {}, {}, --- {}", layout.size(), self.layout.size(), pos_new);
-            println!("self.len {}", self.len);
+            println!("[REALLOC] additional bytes: {}", additional_bytes);
+            println!("[REALLOC] new layout size, pos: {}, {}, --- {}", layout.size(), self.layout.size(), pos_new);
+            assert_eq!(self.layout.size(), pos_new);
+            println!("[REALLOC] self.len (before) {}", self.len);
             assert_eq!(layout.size(), additional_bytes + self.len);
             self.len += additional_bytes;
+            println!("[REALLOC] self.len (after) {}", self.len);
             self.ptr = unsafe { std::alloc::realloc(self.ptr, layout, self.len) };
             self.layout = layout;
+            println!("[REALLOC] {}", self);
         }
     }
 }
 
 /// Allows asynchronous data execution once it's spot in line reaches the 'front'.
-pub struct WriteVisitor<'visit, T> {
+pub struct WriteVisitor<'visit, T: ?Sized> {
     ptr: *mut HyperVec,
     ticket_number: usize,
     bytes_written: usize,
     _phantom: PhantomData<&'visit T>,
 }
 
-unsafe impl<'visit, T> Send for WriteVisitor<'visit, T> {}
+unsafe impl<'visit, T: ?Sized> Send for WriteVisitor<'visit, T> {}
 
-unsafe impl<'visit, T> Sync for WriteVisitor<'visit, T> {}
+unsafe impl<'visit, T: ?Sized> Sync for WriteVisitor<'visit, T> {}
 
 #[allow(unused_results)]
-impl<'visit, T> Drop for WriteVisitor<'visit, T> {
+impl<'visit, T: ?Sized> Drop for WriteVisitor<'visit, T> {
     fn drop(&mut self) {
         unsafe {
             //println!("DROPPING tx Ticket {}", self.ticket_number);
@@ -235,7 +265,7 @@ impl<'visit, T> Drop for WriteVisitor<'visit, T> {
     }
 }
 
-impl<'visit, T> WriteVisitor<'visit, T> {
+impl<'visit, T: ?Sized> WriteVisitor<'visit, T> {
     /// Creates a new WriteVisitor
     pub fn new(hvec_ptr: *mut HyperVec, ticket_number: usize) -> Self {
         Self { ptr: hvec_ptr, ticket_number, _phantom: PhantomData, bytes_written: 0 }
@@ -252,61 +282,49 @@ impl<'visit, T> WriteVisitor<'visit, T> {
     ///
     /// [2]
     #[inline]
-    pub async fn visit<Fx>(self, pre_alloc: Option<usize>, subroutine: Fx) -> InformationResult<'visit, ()> where Fx: Fn(Option<&Self>) -> Option<usize> {
+    pub async fn visit<Fx>(self, pre_alloc: Option<usize>, subroutine: Fx) -> Result<(), MemError<'visit, &'visit [u8]>> where Fx: Fn(&Self) -> Option<usize> {
         if let Some(alloc) = pre_alloc {
             unsafe { (*(self).ptr).extend(alloc) };
         }
 
         (&self).await.and_then(move |_| {
-            unsafe {
-                //println!("Will exec subroutine {}", self.ticket_number);
-                let initial_size = (*(self).ptr).len;
-                let pre_alloc_amt = pre_alloc.unwrap_or(0);
-
-                match subroutine(Some(&self)) {
-                    Some(bytes_added) => {
-                        if bytes_added > initial_size + pre_alloc_amt {
-                            (*(self).ptr).corrupt = true;
-                            let bytes = (*self.ptr).get_full_bytes_mut();
-                            MemError::throw_corrupt(bytes)
-                        } else {
-                            Ok(())
-                        }
-                    }
-
-                    None => {
-                        Ok(())
-                    }
-                }
-            }
+            self.visit_inner(pre_alloc, &subroutine)
         })
     }
 
-    /// Quickly checks to see if the current writer is allowed to write, and if not, immeidantly returns with MemError::NOT_READY
+    /// Quickly checks to see if the current writer is allowed to write, and if not, immediately returns with MemError::NOT_READY
     #[inline]
     pub unsafe fn try_visit<Fx>(self, pre_alloc: Option<usize>, subroutine: Fx) -> InformationResult<'visit, ()>
-        where Fx: Fn(Option<&Self>) -> Option<usize> {
+        where Fx: Fn(&Self) -> Option<usize> {
         if self.is_ready() {
-                let initial_size = (*(self).ptr).len;
-                let pre_alloc_amt = pre_alloc.unwrap_or(0);
+            self.visit_inner(pre_alloc, &subroutine)
+        } else {
+            Err(MemError::NOT_READY)
+        }
+    }
 
-                match subroutine(Some(&self)) {
-                    Some(bytes_added) => {
-                        if bytes_added > initial_size + pre_alloc_amt {
-                            (*(self).ptr).corrupt = true;
-                            let bytes = (*self.ptr).get_full_bytes_mut();
-                            MemError::throw_corrupt(bytes)
-                        } else {
-                            Ok(())
-                        }
-                    }
+    #[inline]
+    fn visit_inner<Fx>(self, pre_alloc: Option<usize>, subroutine: &Fx) -> InformationResult<'visit, ()> where Fx: Fn(&Self) -> Option<usize> {
+        unsafe {
+            //println!("Will exec subroutine {}", self.ticket_number);
+            let initial_size = (*(self).ptr).len;
+            let pre_alloc_amt = pre_alloc.unwrap_or(0);
 
-                    None => {
+            match subroutine(&self) {
+                Some(bytes_added) => {
+                    if bytes_added > initial_size + pre_alloc_amt {
+                        (*self.ptr).corrupt = true;
+                        let bytes = std::mem::transmute::<&'_ [u8], &'static [u8]>((*self.ptr).bytes());
+                        MemError::throw_corrupt(bytes)
+                    } else {
                         Ok(())
                     }
                 }
-        } else {
-            Err(MemError::NOT_READY)
+
+                _ => {
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -326,9 +344,19 @@ impl<'visit, T> WriteVisitor<'visit, T> {
             None
         }
     }
+
+    /// Returns a mutable reference to the underlying object if available
+    #[inline]
+    pub fn get_array(&self) -> Option<&mut [T]> where for<'a> T: Sized{
+        if self.is_ready() {
+            unsafe { Some((*self.ptr).cast_unchecked_mut_array()) }
+        } else {
+            None
+        }
+    }
 }
 
-impl<'visit, T> Future for & WriteVisitor<'visit, T> {
+impl<'visit, T: ?Sized> Future for & WriteVisitor<'visit, T> {
     type Output = InformationResult<'visit, ()>;
 
     #[inline]
@@ -343,19 +371,19 @@ impl<'visit, T> Future for & WriteVisitor<'visit, T> {
 
 
 /// Allows asynchronous data execution once it's spot in line reaches the 'front'.
-pub struct ReadVisitor<'visit, T> {
+pub struct ReadVisitor<'visit, T: ?Sized> {
     ptr: *mut HyperVec,
     ticket_number: usize,
     bytes_written: usize,
     _phantom: PhantomData<&'visit T>,
 }
 
-unsafe impl<'visit, T> Send for ReadVisitor<'visit, T> {}
+unsafe impl<'visit, T: ?Sized> Send for ReadVisitor<'visit, T> {}
 
-unsafe impl<'visit, T> Sync for ReadVisitor<'visit, T> {}
+unsafe impl<'visit, T: ?Sized> Sync for ReadVisitor<'visit, T> {}
 
 #[allow(unused_results)]
-impl<'visit, T> Drop for ReadVisitor<'visit, T> {
+impl<'visit, T: ?Sized> Drop for ReadVisitor<'visit, T> {
     fn drop(&mut self) {
         unsafe {
             //println!("DROPPING rx Ticket {}", self.ticket_number);
@@ -368,7 +396,7 @@ impl<'visit, T> Drop for ReadVisitor<'visit, T> {
     }
 }
 
-impl<'visit, T> ReadVisitor<'visit, T> {
+impl<'visit, T: ?Sized> ReadVisitor<'visit, T> {
     /// Creates a new WriteVisitor
     pub fn new(hvec_ptr: *mut HyperVec, ticket_number: usize) -> Self {
         Self { ptr: hvec_ptr, ticket_number, _phantom: PhantomData, bytes_written: 0 }
@@ -386,10 +414,12 @@ impl<'visit, T> ReadVisitor<'visit, T> {
     /// [2] TBD
     #[allow(unused_must_use)]
     #[inline]
-    pub async fn try_visit<Fx>(&self, subroutine: Fx) -> InformationResult<'visit, ()>
+    async fn try_visit<Fx>(&self, subroutine: Fx) -> InformationResult<'visit, ()>
         where Fx: Fn(Option<&Self>) {
-        // We need to check the write version to make sure it hasn't changed while waiting
-        (self).await.and_then(move |_|  {
+        // We need to check the write version to make sure it hasn't changed while waiting. IF a read
+        // occurs simultaneous to a write, then that could mean that the bytes switched midway through reading
+        // in that case, we must read again for consistency
+        self.await.and_then(move |_|  {
             let start_vers = unsafe { (*self.ptr).get_write_version() };
             subroutine(Some(&self));
             if start_vers ==  unsafe { (*self.ptr).get_write_version() } {
@@ -405,7 +435,7 @@ impl<'visit, T> ReadVisitor<'visit, T> {
     /// [A] The write version changes between the subroutine getting called and not, or;
     /// [B] ...
     #[inline]
-    async fn visit_inner<Fx>(self, subroutine: Fx) -> InformationResult<'visit, ()>
+    async fn visit_iter<Fx>(self, subroutine: Fx) -> InformationResult<'visit, ()>
         where Fx: Fn(Option<&Self>) {
         let fx_ptr = &subroutine as *const Fx;
         let self_ptr = &self as *const Self;
@@ -423,12 +453,23 @@ impl<'visit, T> ReadVisitor<'visit, T> {
 
         Ok(())
     }
-    
+
 
     /// This function will iteratively continue to seek a valid read. It ensures that, if data is changed during the subroutine's period, it will call itself again
+    /// We don't do this with the writer, because the size is guaranteed to stay the same (so long as there's no illegal pointer access externally)
+    pub async fn visit_until_valid_read<Fx>(self, subroutine: Fx) -> InformationResult<'visit, ()>
+        where Fx: Fn(Option<&Self>) {
+        self.visit_iter(subroutine).await
+    }
+
+    /// This function will read the moment its ticket becomes valid, returning reguardless if a read is valid or not.
+    /// If a read was not valid, a MemoryError will return return with a reference to the corrupted bytes, just incase the user
+    /// implements a design where the data needing to be read isn't dependent upon where a write simultaneously occured.
+    /// In such a design, one must also account for the new length of the buffer, and as such, it is advised to not implement
+    /// such a design unless the programmer knows what he/she is doing
     pub async fn visit<Fx>(self, subroutine: Fx) -> InformationResult<'visit, ()>
         where Fx: Fn(Option<&Self>) {
-        self.visit_inner(subroutine).await
+        self.try_visit(subroutine).await
     }
 
 
@@ -450,7 +491,7 @@ impl<'visit, T> ReadVisitor<'visit, T> {
     }
 }
 
-impl<'visit, T> Future for &ReadVisitor<'visit, T> {
+impl<'visit, T: ?Sized> Future for &ReadVisitor<'visit, T> {
     type Output = InformationResult<'visit, ()>;
 
     #[inline]

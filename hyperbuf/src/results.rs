@@ -8,35 +8,52 @@ use std::error::Error;
 
 /// #
 #[allow(non_camel_case_types)]
-pub enum MemError<'a, T: AsRef<[u8]>> {
+pub enum MemError<'a, E: AsRef<[u8]>> {
     /// Contains the corrupted bytes
-    CORRUPT(Vec<u8>),
+    CORRUPT(E),
     /// Out of sync
     OUT_OF_SYNC,
     /// Not ready (for polling)
     NOT_READY,
+    /// #
+    BAD_ALIGN(E),
     /// A generic error message
-    GENERIC(T),
-    /// phantom
-    _phantom(&'a T)
+    GENERIC(E),
+    /// #
+    _phantom(&'a E)
 }
 
-impl<'a, T: AsRef<[u8]> + 'a> MemError<'a, T> {
+impl<'a: 'static, E: 'a +  AsRef<[u8]> + 'a> MemError<'a, E> {
 
     /// #
-    pub fn throw_corrupt<U>(symbol: T) -> InformationResult<'a, U> {
-        Err(MemError::CORRUPT(symbol.as_ref().to_vec()))
+    pub fn throw_corrupt<U>(symbol: E) -> Result<U, Self> {
+        Err(MemError::CORRUPT(symbol))
     }
 
     /// #
-    pub fn throw<U>(data: &'a T) -> InformationResult<'a, U> {
-        Err(MemError::GENERIC(data.as_ref()))
+    pub fn throw_bad_align<U>(data: E) -> Result<U, Self> {
+        Err(MemError::BAD_ALIGN(data))
+    }
+
+    /// #
+    pub fn throw<U>(data: E) -> Result<U, Self> {
+        Err(MemError::GENERIC(data))
+    }
+
+    /// #
+    pub fn throw_std<U>(data: E) -> Result<U, std::io::Error> {
+        Err(std::io::Error::new(std::io::ErrorKind::Other, MemError::GENERIC(data)))
+    }
+
+    /// #
+    pub fn std(data: E) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, MemError::GENERIC(data))
     }
 
     fn printf(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
             MemError::CORRUPT(t) => {
-                write!(f, "[MemoryError] {}", String::from_utf8_lossy(t.as_slice()))
+                write!(f, "[MemoryError] {}", String::from_utf8_lossy(t.as_ref()))
             },
 
             MemError::OUT_OF_SYNC => {
@@ -47,6 +64,10 @@ impl<'a, T: AsRef<[u8]> + 'a> MemError<'a, T> {
                 write!(f, "[MemoryError] Not ready")
             },
 
+            MemError::BAD_ALIGN(t) => {
+                write!(f, "[MemoryError] Bad Align. {}", String::from_utf8_lossy(t.as_ref()))
+            }
+
             MemError::GENERIC(msg) => {
                 write!(f, "[MemoryError] {}", String::from_utf8_lossy((*msg.as_ref()).as_ref()))
             }
@@ -54,6 +75,8 @@ impl<'a, T: AsRef<[u8]> + 'a> MemError<'a, T> {
         }
     }
 
+    /// #
+    #[allow(dead_code)]
     fn value(&self) -> i32 {
         match self {
             MemError::CORRUPT(_) => {
@@ -76,25 +99,27 @@ impl<'a, T: AsRef<[u8]> + 'a> MemError<'a, T> {
     }
 }
 
-impl<'a, T: AsRef<[u8]>> Display for MemError<'a, T> {
+impl<'a: 'static, E: AsRef<[u8]>> Display for MemError<'a, E> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         self.printf(f)
     }
 }
 
-impl<'a, T: AsRef<[u8]>> Debug for MemError<'a, T> {
+impl<'a: 'static, E: AsRef<[u8]>> Debug for MemError<'a, E> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         self.printf(f)
     }
 }
 
-impl<'a, T: AsRef<[u8]>> Error for MemError<'a, T> {}
+impl<'a: 'static, E: AsRef<[u8]>> Error for MemError<'a, E> {}
+unsafe impl<'a, E: AsRef<[u8]>> Send for MemError<'a, E> {}
+unsafe impl<'a, E: AsRef<[u8]>> Sync for MemError<'a, E> {}
 
-impl<'a, T: AsRef<[u8]> + Send + Sync> Into<std::io::Error> for MemError<'a, T> {
-    fn into(self) -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::Other, std::io::Error::from_raw_os_error(self.value()))
+impl<'a, E: AsRef<[u8]> + Send + Sync + 'a> Into<std::io::Error> for MemError<'static, E> {
+    fn into(self) -> std::io::Error  {
+        std::io::Error::new(std::io::ErrorKind::Other, self)
     }
 }
 
 /// #
-pub type InformationResult<'a,T> = Result<T, MemError<'a, &'a [u8]>>;
+pub type InformationResult<'a, T> = Result<T, MemError<'a, &'a [u8]>>;

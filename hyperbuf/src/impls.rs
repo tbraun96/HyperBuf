@@ -5,7 +5,7 @@ use std::ops::{Index, IndexMut, Range};
 use std::ptr::NonNull;
 use bytes::BufMut;
 
-use crate::results::{InformationResult, MemError};
+use crate::results::MemError;
 use crate::hypervec::{HyperVec, ReadVisitor, WriteVisitor, Endianness};
 use std::sync::atomic::AtomicUsize;
 use std::alloc::{Alloc, Layout};
@@ -70,6 +70,25 @@ impl Drop for HyperVec {
     }
 }
 
+/*
+#[allow(ambiguous_associated_items)]
+impl<'visit, T, E: AsRef<[u8]>> Try for MemoryResult<WriteVisitor<'visit, T>, MemError<'visit, E>> {
+    type Ok = WriteVisitor<'visit, T>;
+    type Error = MemError<'visit, E>;
+
+    fn into_result(self) -> Result<Self::Ok, Self::Error> {
+        self
+    }
+
+    fn from_error(err: Self::Error) -> Self {
+        panic!("Invalid operation. Error: {}", err.to_string())
+    }
+
+    fn from_ok(v: Self::Ok) -> Self {
+        v
+    }
+}
+*/
 impl Index<isize> for HyperVec {
     type Output = u8;
 
@@ -101,13 +120,13 @@ impl IndexMut<Range<isize>> for HyperVec {
 }
 
 impl Iterator for HyperVec {
-    type Item = *const u8;
+    type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor < self.len as isize {
             let ret = self[self.cursor];
             self.cursor += 1;
-            Some(&ret as *const u8)
+            Some(ret)
         } else {
             None
         }
@@ -132,6 +151,7 @@ impl BufMut for HyperVec {
         unsafe {
             debug_assert!(self.remaining_mut() >= slice.len());
             let p0 = self.cursor;
+            println!("putting w/ cursor pos {}", p0);
             let len = slice.len() as isize;
             match len {}
             self.cursor += len;
@@ -147,41 +167,59 @@ impl BufMut for HyperVec {
 /// Used to cast the internal of a HyperVec
 pub trait Castable {
     /// Casts the underlying bytes to an immutable version of the the supplied type with checking alignment accompanied by a ReadVisitor
-    fn cast<Type>(&self) -> InformationResult<ReadVisitor<Type>>;
+    fn cast<Type: ?Sized>(&self) -> Result<ReadVisitor<Type>, MemError<&[u8]>>;
     /// Casts the underlying bytes to an immutable version of the the supplied type without checking alignment
-    unsafe fn cast_unchecked<Type>(&self) -> &Type;
+    unsafe fn cast_unchecked<Type: ?Sized>(&self) -> &Type;
+    /// Casts the underlying type to an array of the user-specified type. If the user is referencing an array of u16's, then when
+    /// cast or cast_mut is called prior to this (to obtain the appropriate visitor), then the type paremeter should be "u16", but
+    /// NOT "[u16]"
+    unsafe fn cast_unchecked_array<Type: Sized>(&self) -> &[Type];
     /// Casts the underlying bytes to a mutable version of the supplied type with checking alignment accompanied by a WriteVisitor
-    fn cast_mut<Type>(&mut self) -> InformationResult<WriteVisitor<Type>>;
+    fn cast_mut<Type: ?Sized>(&mut self) -> Result<WriteVisitor<Type>, MemError<&[u8]>>;
     /// Casts the underlying bytes to a mutable version of the the supplied type without checking alignment
-    unsafe fn cast_unchecked_mut<Type>(&mut self) -> &mut Type;
+    unsafe fn cast_unchecked_mut<Type: ?Sized>(&mut self) -> &mut Type;
+
+    /// Casts the underlying type to an array of the user-specified type. If the user is referencing an array of u16's, then when
+    /// cast or cast_mut is called prior to this (to obtain the appropriate visitor), then the type paremeter should be "u16", but
+    /// NOT [u16]
+    unsafe fn cast_unchecked_mut_array<Type: Sized>(&mut self) -> &mut [Type];
 }
+
 
 impl Castable for HyperVec {
-    fn cast<Type>(&self) -> InformationResult<ReadVisitor<Type>> {
-        if std::mem::align_of::<Type>() == self.layout.size() {
-            Ok(ReadVisitor::new((&*self as *const Self) as *mut Self, self.get_read_version()))
-        } else {
-            MemError::throw_corrupt(&"Invalid alignment")
-        }
+    fn cast<Type: ?Sized>(&self) -> Result<ReadVisitor<Type>, MemError<&[u8]>> {
+        //println!("{} {} | {} {}", std::mem::align_of::<&Type>(), self.layout.align(), std::mem::size_of::<&Type>(), self.layout.size());
+        Ok(ReadVisitor::new(self as *const Self as *mut Self, self.get_write_version()))
     }
 
-
-    unsafe fn cast_unchecked<Type>(&self) -> &Type {
-        &*(self.ptr as *mut Type)
+    unsafe fn cast_unchecked<Type: ?Sized>(&self) -> &Type {
+        //println!("S/A {} / {}", std::mem::size_of::<&Type>(), std::mem::align_of::<&Type>());
+        std::mem::transmute_copy::<*mut u8, &mut Type>(&self.ptr)
     }
 
-    fn cast_mut<Type>(&mut self) -> InformationResult<WriteVisitor<Type>> {
-        if std::mem::align_of::<Type>() == self.layout.size() {
-            Ok(WriteVisitor::new(&mut *self as *mut Self, self.get_write_version()))
-        } else {
-            MemError::throw_corrupt(&"Invalid alignment")
-        }
+    unsafe fn cast_unchecked_array<Type: Sized>(&self) -> &[Type] {
+        //println!("S/A {} / {}", std::mem::size_of::<Type>(), std::mem::align_of::<Type>());
+        let base_ptr = std::mem::transmute_copy::<*const u8, *const Type>(&(self.ptr as *const u8));
+        &*std::ptr::slice_from_raw_parts(base_ptr, self.len / std::mem::size_of::<Type>())
     }
 
-    unsafe fn cast_unchecked_mut<Type>(&mut self) -> &mut Type {
-        &mut *(self.ptr as *mut Type)
+    fn cast_mut<Type: ?Sized>(&mut self) -> Result<WriteVisitor<Type>, MemError<&[u8]>> {
+        //println!("{} {} | {} {}", std::mem::align_of::<&Type>(), self.layout.align(), std::mem::size_of::<&Type>(), self.layout.size());
+        Ok(WriteVisitor::new(&mut *self as *mut Self, self.get_write_version()))
+    }
+
+    unsafe fn cast_unchecked_mut<Type: ?Sized>(&mut self) -> &mut Type {
+        //println!("S/A {} / {}", std::mem::size_of::<&Type>(), std::mem::align_of::<&Type>());
+        std::mem::transmute_copy::<*mut u8, &mut Type>(&self.ptr)
+    }
+
+    unsafe fn cast_unchecked_mut_array<Type: Sized>(&mut self) -> &mut [Type] {
+        //println!("S/A {} / {}", std::mem::size_of::<Type>(), std::mem::align_of::<Type>());
+        let base_ptr = std::mem::transmute_copy::<*mut u8, *mut Type>(&self.ptr);
+        &mut *std::ptr::slice_from_raw_parts_mut(base_ptr, self.len / std::mem::size_of::<Type>())
     }
 }
+
 
 /// Byte-order aware wrapper for data allocation within a [HyperVec]
 pub trait ByteWrapper {
@@ -428,7 +466,7 @@ impl BytePusher for HyperVec {
 
     fn push_u16s<T: AsRef<[u16]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 2);
 
         match self.endianness {
             Endianness::BE => {
@@ -447,7 +485,7 @@ impl BytePusher for HyperVec {
 
     fn push_u32s<T: AsRef<[u32]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 4);
 
         match self.endianness {
             Endianness::BE => {
@@ -466,7 +504,7 @@ impl BytePusher for HyperVec {
 
     fn push_u64s<T: AsRef<[u64]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 8);
 
         match self.endianness {
             Endianness::BE => {
@@ -485,7 +523,7 @@ impl BytePusher for HyperVec {
 
     fn push_u128s<T: AsRef<[u128]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 16);
 
         match self.endianness {
             Endianness::BE => {
@@ -523,7 +561,7 @@ impl BytePusher for HyperVec {
 
     fn push_i16s<T: AsRef<[i16]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 2);
 
         match self.endianness {
             Endianness::BE => {
@@ -542,7 +580,7 @@ impl BytePusher for HyperVec {
 
     fn push_i32s<T: AsRef<[i32]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 4);
 
         match self.endianness {
             Endianness::BE => {
@@ -561,7 +599,7 @@ impl BytePusher for HyperVec {
 
     fn push_i64s<T: AsRef<[i64]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 8);
 
         match self.endianness {
             Endianness::BE => {
@@ -580,7 +618,7 @@ impl BytePusher for HyperVec {
 
     fn push_i128s<T: AsRef<[i128]>>(&mut self, t: T) {
         let t  = t.as_ref();
-        self.extend(t.len());
+        self.extend(t.len() * 16);
 
         match self.endianness {
             Endianness::BE => {

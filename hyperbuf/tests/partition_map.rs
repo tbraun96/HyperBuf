@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use hypervec::partition_map::PartitionMap;
+    use hyperbuf::partition_map::PartitionMap;
     use std::any::Any;
 
     #[test]

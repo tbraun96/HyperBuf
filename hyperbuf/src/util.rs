@@ -62,10 +62,9 @@ pub(super) mod ser {
     ///             is_be (bool: 1 byte)
     /// Tactic: start from the end, assume the bytes are properly placed in order
     pub(crate) fn deserialize_hypervec_from_disk<T: DeserializeOwned>(full_path: &str) -> Result<T, std::io::Error> {
-        //bincode::config().deserialize_from(rx).map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, MemError::<String>::GENERIC(err.to_string()))
         File::open(full_path).and_then(|res| {
             let rx = BufReader::new(res);
-            bincode::config().deserialize_from(rx).map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, MemError::<String>::GENERIC(err.to_string())))
+            bincode::config().deserialize_from(rx).map_err(|err| MemError::std(err.to_string()))
         })
     }
 
@@ -75,7 +74,7 @@ pub(super) mod ser {
     pub fn ptr_deserialize_hypervecserde(bytes: &[u8]) -> Result<HyperVecSerde, std::io::Error> {
         let len = bytes.len();
         if len < HYPERVEC_MIN_SIZE {
-            Err(std::io::Error::new(std::io::ErrorKind::Other, MemError::<String>::GENERIC("Invalid size!".to_string())))
+            MemError::throw_std("Invalid size! Too small")
         } else {
             let is_be = bytes[len - 1] == 1;
             let write_version = usize::from_le_bytes([bytes[(len - 9)], bytes[(len - 8)], bytes[(len - 7)], bytes[(len - 6)], bytes[(len - 5)], bytes[(len - 4)], bytes[(len - 3)], bytes[(len - 2)]]);
